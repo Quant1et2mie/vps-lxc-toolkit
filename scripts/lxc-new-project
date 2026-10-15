@@ -1,0 +1,44 @@
+#!/bin/bash
+# Crée un nouveau container projet en clonant alpine-master.
+# Usage : lxc-new-project <nom> [ip]      (ip auto dans 10.0.3.100-199 si omise)
+#         lxc-new-project --list          (IP déjà prises)
+set -euo pipefail
+
+MASTER=alpine-master
+LXC=/var/lib/lxc
+
+used_ips() {
+    grep -rhoE '10\.0\.3\.[0-9]+' \
+        "$LXC"/*/rootfs/etc/network/interfaces \
+        "$LXC"/*/rootfs/etc/systemd/network/*.network 2>/dev/null | sort -t. -k4 -n -u
+}
+
+if [[ "${1:-}" == "--list" ]]; then used_ips; exit 0; fi
+
+NAME="${1:?Usage: lxc-new-project <nom> [ip]}"
+IP="${2:-}"
+
+[[ "$NAME" =~ ^[a-z][a-z0-9-]{1,30}$ ]] || { echo "Nom invalide (a-z, 0-9, -)"; exit 1; }
+[[ -e "$LXC/$NAME" ]] && { echo "Le container $NAME existe déjà"; exit 1; }
+lxc-info -n "$MASTER" -s | grep -q STOPPED || { echo "$MASTER doit être arrêté pour être cloné"; exit 1; }
+
+if [[ -z "$IP" ]]; then
+    for i in $(seq 100 199); do
+        used_ips | grep -qx "10.0.3.$i" || { IP="10.0.3.$i"; break; }
+    done
+fi
+[[ "$IP" =~ ^10\.0\.3\.([0-9]{1,3})$ ]] && (( BASH_REMATCH[1] >= 2 && BASH_REMATCH[1] <= 254 )) \
+    || { echo "IP invalide : $IP (attendu 10.0.3.2-254)"; exit 1; }
+used_ips | grep -qx "$IP" && { echo "IP $IP déjà utilisée"; exit 1; }
+
+lxc-copy -n "$MASTER" -N "$NAME"
+sed -i "s#address 10\.0\.3\.[0-9]*/24#address $IP/24#" "$LXC/$NAME/rootfs/etc/network/interfaces"
+echo "$NAME" > "$LXC/$NAME/rootfs/etc/hostname"
+sed -i 's#^\# ---- Master Alpine.*#\# ---- Projet '"$NAME"' (cloné depuis '"$MASTER"' le '"$(date +%F)"') ----#' "$LXC/$NAME/config"
+
+lxc-start -n "$NAME"
+sleep 3
+echo "✔ $NAME créé et démarré — IP $IP"
+echo "  Shell :        lxc-attach -n $NAME"
+echo "  Démarrage auto: sed -i 's/start.auto = 0/start.auto = 1/' $LXC/$NAME/config"
+echo "  Limites RAM :  $LXC/$NAME/config (lxc.cgroup2.memory.max)"
