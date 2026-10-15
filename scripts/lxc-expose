@@ -10,10 +10,9 @@
 #         lxc-expose --list    : demandes en attente
 #
 # Certificat : le wildcard *.example.fr (certbot --dns-ovh, renouvelé seul) est utilisé s'il existe ;
-# sinon, certificat dédié au sous-domaine (webroot). Wildcard ajouté le 2026-10-15.
+# sinon, certificat dédié au sous-domaine (webroot).
 # Si le DNS ne pointe pas encore sur le VPS, la demande est mise en attente dans $PENDING
 # et lxc-expose.timer la termine toute seule (toutes les 10 min) dès que le DNS est prêt.
-# Créé le 2026-09-25.
 set -euo pipefail
 ZONE=example.fr; VPS="<ip_publique>"; NGX=nginx   # à adapter : domaine et IP publique du serveur
 PENDING=/var/lib/lxc-expose/pending
